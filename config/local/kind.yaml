@@ -1,0 +1,18 @@
+# Local NEPTUNE cluster: same topology and feature gates as
+# config/cluster-conf/kind.conf, plus a docker.io mirror pointing at the
+# local registry (hack/local-up.sh) so locally built systemautoscaler/* images
+# are used even with imagePullPolicy: Always. Anything not found in the local
+# registry falls through to Docker Hub.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+featureGates:
+  "InPlacePodVerticalScaling": true
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+    endpoint = ["http://neptune-registry:5000", "https://registry-1.docker.io"]
+nodes:
+- role: control-plane
+- role: worker
+- role: worker
+- role: worker
