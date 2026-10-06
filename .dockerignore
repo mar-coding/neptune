@@ -1,0 +1,5 @@
+.git
+.claude
+graphify-out
+**/*.out
+**/testdata
