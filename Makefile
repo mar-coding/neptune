@@ -10,7 +10,7 @@ endif
 
 CRD_OPTIONS ?= "crd:trivialVersions=true"
 
-.PHONY: all build cluster clean coverage controller-gen e2e fmt install install-crds install-rbac manifests release test vet
+.PHONY: all build cluster clean coverage controller-gen e2e fmt install install-crds install-rbac manifests release test vet local-up local-down local-smoke tools-image
 
 all: build coverage clean manifests test
 
@@ -40,6 +40,19 @@ e2e: install
 	@kubectl apply -f ./config/cluster-conf/e2e-namespace.yaml
 	$(call action, e2e)
 	@kubectl delete -f ./config/cluster-conf/e2e-namespace.yaml
+
+# Local environment (kind + local registry). Host needs only docker and kind.
+local-up:
+	@./hack/local-up.sh
+
+local-smoke:
+	@./hack/local/smoke-test.sh
+
+local-down:
+	@./hack/local-down.sh
+
+tools-image:
+	@docker build -t neptune-tools:latest hack/tools
 
 install-rbac:
 	@echo "install RBAC"
