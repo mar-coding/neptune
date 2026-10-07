@@ -17,34 +17,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - name: Set up Go 1.16
-      uses: actions/setup-go@v2
-      with:
-        go-version: ^1.16
-
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
-    - name: Cache Go modules
-      uses: actions/cache@v2
+    # keep in sync with hack/tools/Dockerfile
+    - name: Set up Go
+      uses: actions/setup-go@v5
       with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
+        go-version: '1.22'
 
     - name: Get dependencies
-      run: |
-        go get -v -t -d ./...
+      run: go mod download
 
     - name: Build
-      run: |
-        make build
+      run: go build ./...
 
-    - name: Test
-      run: |
-        make test
+    - name: Vet
+      run: go vet ./...
+
+    # all packages, including shared ones that the per-component Makefiles skip
+    - name: Unit tests with coverage
+      run: go test -race -count=1 -coverprofile=coverage.out $(go list ./... | grep -v /e2e)
 
     - name: Coverage
-      run: |
-        make coverage
+      run: go tool cover -func=coverage.out | tail -1
+
+  integration:
+    name: Integration tests (TimescaleDB)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run integration tests
+      run: ./hack/test-integration.sh

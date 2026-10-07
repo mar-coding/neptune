@@ -10,7 +10,7 @@ endif
 
 CRD_OPTIONS ?= "crd:trivialVersions=true"
 
-.PHONY: all build cluster clean coverage controller-gen e2e fmt install install-crds install-rbac manifests release test vet local-up local-down local-smoke tools-image
+.PHONY: all build cluster clean coverage controller-gen e2e fmt install install-crds install-rbac manifests release test vet local-up local-down local-smoke tools-image test-unit test-integration test-e2e
 
 all: build coverage clean manifests test
 
@@ -53,6 +53,17 @@ local-down:
 
 tools-image:
 	@docker build -t neptune-tools:latest hack/tools
+
+# Tests run inside the tools container (hack/dock.sh), host needs only docker and kind.
+test-unit:
+	@./hack/dock.sh sh -c 'go test -race -count=1 $$(go list ./... | grep -v /e2e)'
+
+test-integration:
+	@./hack/test-integration.sh
+
+# needs no other kind cluster running (inotify limits): run `make local-down` first if needed
+test-e2e:
+	@./hack/test-e2e.sh
 
 install-rbac:
 	@echo "install RBAC"

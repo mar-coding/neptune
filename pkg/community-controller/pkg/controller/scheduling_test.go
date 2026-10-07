@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 
@@ -113,7 +114,8 @@ func TestSchedule(t *testing.T) {
 		},
 	}
 
-	newFakeSchedulerServer()
+	server := newFakeSchedulerServer()
+	defer server.Close()
 
 	for _, tt := range testcases {
 		t.Run(tt.description, func(t *testing.T) {
@@ -136,7 +138,7 @@ func TestSchedule(t *testing.T) {
 				require.True(t, tt.expectError)
 			}
 
-			s := NewScheduler("http://localhost:8080/")
+			s := NewScheduler(server.URL + "/")
 			output, err := s.Schedule(result)
 
 			if err != nil {
@@ -165,8 +167,10 @@ func newRandomFakeNode(randomSeed int) *corev1.Node {
 	}
 }
 
-func newFakeSchedulerServer() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+// newFakeSchedulerServer starts a fake MIP solver that allocates every function on every node.
+// httptest.NewServer is listening when it returns, so requests cannot race the server start.
+func newFakeSchedulerServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var input SchedulingInput
 
 		// Try to decode the request body into the struct. If there is an error,
@@ -221,10 +225,7 @@ func newFakeSchedulerServer() {
 			klog.Errorf("Can't write response: %v", err)
 			http.Error(w, fmt.Sprintf("could not write response: %v", err), http.StatusInternalServerError)
 		}
-	})
-	go func() {
-		klog.Fatal(http.ListenAndServe(":8080", nil))
-	}()
+	}))
 }
 
 func newRandomFakeFunction(randomSeed int) *openfaasv1.Function {
