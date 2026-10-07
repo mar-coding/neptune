@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/lterrac/edge-autoscaler/pkg/community-controller/pkg/controller"
@@ -134,6 +135,57 @@ var _ = Describe("Community Controller", func() {
 
 	})
 
+	Context("When the allocation of a function changes", func() {
+
+		var workers []string
+		var previousCommunities map[string]string
+
+		BeforeEach(func() {
+			// the suite puts a single worker in the community: use all of them
+			workers = []string{}
+			communitiesByNode := map[string]string{}
+			for _, n := range workerNodes {
+				workers = append(workers, n.Name)
+				communitiesByNode[n.Name] = communityName
+			}
+			sort.Strings(workers)
+			Expect(len(workers)).To(BeNumerically(">=", 3), "the scenario needs three worker nodes")
+			previousCommunities = setCommunity(ctx, communitiesByNode)
+
+			setAllocationOverride(allocateOn(workers[0], workers[1]))
+			_, err := openfaasClient.OpenfaasV1().Functions(namespace).Create(ctx, instanceFunction(), metav1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			setAllocationOverride(nil)
+			_ = openfaasClient.OpenfaasV1().Functions(namespace).Delete(ctx, instanceFunctionName, metav1.DeleteOptions{})
+			setCommunity(ctx, previousCommunities)
+		})
+
+		It("Instances are scaled out, scaled in and moved following the allocation", func() {
+			By("scaling out to two nodes")
+			Eventually(func() []string { return instanceNodes(ctx) }, 5*timeout, interval).
+				Should(Equal([]string{workers[0], workers[1]}))
+			Eventually(func() bool { return allInstancesReady(ctx) }, 5*timeout, interval).Should(BeTrue())
+			kept := liveInstances(ctx)[workers[0]][0].UID
+
+			By("scaling in to one node")
+			setAllocationOverride(allocateOn(workers[0]))
+			triggerRescheduling(ctx)
+			Eventually(func() []string { return instanceNodes(ctx) }, 5*timeout, interval).
+				Should(Equal([]string{workers[0]}))
+			Expect(liveInstances(ctx)[workers[0]][0].UID).To(Equal(kept), "the instance on the remaining node must not be recreated")
+
+			By("moving the instance to another node")
+			setAllocationOverride(allocateOn(workers[2]))
+			triggerRescheduling(ctx)
+			Eventually(func() []string { return instanceNodes(ctx) }, 5*timeout, interval).
+				Should(Equal([]string{workers[2]}))
+			Eventually(func() bool { return allInstancesReady(ctx) }, 5*timeout, interval).Should(BeTrue())
+		})
+	})
+
 })
 
 func newFakeSchedulerServer() {
@@ -175,6 +227,11 @@ func newFakeSchedulerServer() {
 					allocations[f][node] = true
 				}
 			}
+		}
+
+		// instance management specs dictate the allocation
+		if override := getAllocationOverride(); override != nil {
+			allocations = override
 		}
 
 		output := &controller.SchedulingOutput{

@@ -161,11 +161,10 @@ var _ = Describe("System Controller", func() {
 		})
 
 		It("Has update the community configuration status", func() {
-			updatedCC, err := eaClient.EdgeautoscalerV1alpha1().CommunityConfigurations(cc.Namespace).Get(ctx, cc.Name, metav1.GetOptions{})
-			Expect(err).ShouldNot(HaveOccurred())
-
+			// fetch inside Eventually: the status may not be written yet when the spec starts
 			Eventually(func() bool {
-				if len(updatedCC.Status.Communities) == 0 {
+				updatedCC, err := eaClient.EdgeautoscalerV1alpha1().CommunityConfigurations(cc.Namespace).Get(ctx, cc.Name, metav1.GetOptions{})
+				if err != nil || len(updatedCC.Status.Communities) == 0 {
 					return false
 				}
 				return assert.ElementsMatch(&testing.T{}, generatedCommunities.Values(), updatedCC.Status.Communities)
